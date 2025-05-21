@@ -59,14 +59,14 @@ local function showCarryMenu(fromId)
                 title = 'Accept',
                 description = 'Allow this player to carry you.',
                 onSelect = function()
-                    TriggerServerEvent("custom_carry:respond", fromId, true)
+                    TriggerServerEvent("wizard_carry:respond", fromId, true)
                 end
             },
             {
                 title = 'Decline',
                 description = 'Reject the carry request.',
                 onSelect = function()
-                    TriggerServerEvent("custom_carry:respond", fromId, false)
+                    TriggerServerEvent("wizard_carry:respond", fromId, false)
                 end
             }
         }
@@ -79,7 +79,7 @@ RegisterCommand("carry", function()
         local target = findNearestPlayer(3.0)
         if target then
             local serverId = GetPlayerServerId(target)
-            TriggerServerEvent("custom_carry:request", serverId)
+            TriggerServerEvent("wizard_carry:request", serverId)
             lib.notify({
                 title = 'Carry Request',
                 description = 'Requesting permission...',
@@ -98,16 +98,16 @@ RegisterCommand("carry", function()
         carrySystem.isActive = false
         ClearPedTasks(PlayerPedId())
         DetachEntity(PlayerPedId(), true, false)
-        TriggerServerEvent("custom_carry:cancel", carrySystem.partnerId)
+        TriggerServerEvent("wizard_carry:cancel", carrySystem.partnerId)
         carrySystem.partnerId = -1
     end
 end, false)
 
-RegisterNetEvent("custom_carry:showMenu", function(fromId)
+RegisterNetEvent("wizard_carry:showMenu", function(fromId)
     showCarryMenu(fromId)
 end)
 
-RegisterNetEvent("custom_carry:begin", function(partnerId)
+RegisterNetEvent("wizard_carry:begin", function(partnerId)
     carrySystem.isActive = true
     carrySystem.partnerId = partnerId
     carrySystem.role = "carrier"
@@ -120,7 +120,7 @@ RegisterNetEvent("custom_carry:begin", function(partnerId)
     })
 end)
 
-RegisterNetEvent("custom_carry:attachToCarrier", function(partnerId)
+RegisterNetEvent("wizard_carry:attachToCarrier", function(partnerId)
     local carrierPed = GetPlayerPed(GetPlayerFromServerId(partnerId))
     carrySystem.isActive = true
     carrySystem.role = "carried"
@@ -128,7 +128,7 @@ RegisterNetEvent("custom_carry:attachToCarrier", function(partnerId)
     AttachEntityToEntity(PlayerPedId(), carrierPed, 0, carrySystem.carried.offsetX, carrySystem.carried.offsetY, carrySystem.carried.offsetZ, 0.5, 0.5, 180.0, false, false, false, false, 2, false)
 end)
 
-RegisterNetEvent("custom_carry:stop", function()
+RegisterNetEvent("wizard_carry:stop", function()
     carrySystem.isActive = false
     ClearPedTasks(PlayerPedId())
     DetachEntity(PlayerPedId(), true, false)

@@ -1,169 +1,150 @@
-local carry = {
-    InProgress = false,
-    targetSrc = -1,
-    type = "",
-    personCarrying = {
-        animDict = "missfinale_c2mcs_1",
+local carrySystem = {
+    isActive = false,
+    partnerId = -1,
+    role = "",
+    carrier = {
+        dict = "missfinale_c2mcs_1",
         anim = "fin_c2_mcs_1_camman",
         flag = 49,
     },
-    personCarried = {
-        animDict = "nm",
+    carried = {
+        dict = "nm",
         anim = "firemans_carry",
-        attachX = 0.27,
-        attachY = 0.15,
-        attachZ = 0.63,
+        offsetX = 0.27,
+        offsetY = 0.15,
+        offsetZ = 0.63,
         flag = 33,
     }
 }
 
-local carryRequests = {}
+local pendingRequests = {}
 
-local function GetClosestPlayer(radius)
-    local players = GetActivePlayers()
-    local closestDistance = -1
-    local closestPlayer = -1
-    local playerPed = PlayerPedId()
-    local playerCoords = GetEntityCoords(playerPed)
+local function findNearestPlayer(maxDist)
+    local closestPlayer, closestDist = -1, -1
+    local myPed = PlayerPedId()
+    local myCoords = GetEntityCoords(myPed)
 
-    for _,playerId in ipairs(players) do
-        local targetPed = GetPlayerPed(playerId)
-        if targetPed ~= playerPed then
+    for _, id in ipairs(GetActivePlayers()) do
+        local targetPed = GetPlayerPed(id)
+        if targetPed ~= myPed then
             local targetCoords = GetEntityCoords(targetPed)
-            local distance = #(targetCoords-playerCoords)
-            if closestDistance == -1 or closestDistance > distance then
-                closestPlayer = playerId
-                closestDistance = distance
+            local distance = #(targetCoords - myCoords)
+            if closestDist == -1 or distance < closestDist then
+                closestDist = distance
+                closestPlayer = id
             end
         end
     end
-    if closestDistance ~= -1 and closestDistance <= radius then
+
+    if closestDist ~= -1 and closestDist <= maxDist then
         return closestPlayer
-    else
-        return nil
+    end
+
+    return nil
+end
+
+local function loadAnim(dict)
+    if not HasAnimDictLoaded(dict) then
+        RequestAnimDict(dict)
+        while not HasAnimDictLoaded(dict) do Wait(0) end
     end
 end
 
-local function ensureAnimDict(animDict)
-    if not HasAnimDictLoaded(animDict) then
-        RequestAnimDict(animDict)
-        while not HasAnimDictLoaded(animDict) do
-            Wait(0)
-        end        
-    end
-    return animDict
-end
-
-local function OpenCarryRequestMenu(targetId)
-    local targetName = GetPlayerName(GetPlayerFromServerId(targetId))
-
+local function showCarryMenu(fromId)
     lib.registerContext({
-        id = 'carry_request_menu',
-        title = 'Carry Request',
+        id = 'carry_permission',
+        title = 'Carry Consent',
         options = {
             {
-                title = 'Accept Request',
-                description = 'Someone wants to carry you',
+                title = 'Accept',
+                description = 'Allow this player to carry you.',
                 onSelect = function()
-                    TriggerServerEvent("wizard_carry:responseCarry", targetId, true)
+                    TriggerServerEvent("custom_carry:respond", fromId, true)
                 end
             },
             {
-                title = 'Decline Request',
-                description = 'Decline carry request',
+                title = 'Decline',
+                description = 'Reject the carry request.',
                 onSelect = function()
-                    TriggerServerEvent("wizard_carry:responseCarry", targetId, false)
+                    TriggerServerEvent("custom_carry:respond", fromId, false)
                 end
             }
         }
     })
-    
-    lib.showContext('carry_request_menu')
+    lib.showContext('carry_permission')
 end
 
-RegisterCommand("carry", function(source, args)
-    if not carry.InProgress then
-        local closestPlayer = GetClosestPlayer(3)
-        if closestPlayer then
-            local targetSrc = GetPlayerServerId(closestPlayer)
-            if targetSrc ~= -1 then
-                TriggerServerEvent("wizard_carry:requestCarry", targetSrc)
-                lib.notify({
-                    title = 'Carry Request',
-                    description = 'Asking for permission to carry...',
-                    type = 'inform',
-                    position = 'top'
-                })
-            else
-                lib.notify({
-                    title = 'Error',
-                    description = 'No one nearby to carry!',
-                    type = 'error',
-                    position = 'top'
-                })
-            end
+RegisterCommand("carry", function()
+    if not carrySystem.isActive then
+        local target = findNearestPlayer(3.0)
+        if target then
+            local serverId = GetPlayerServerId(target)
+            TriggerServerEvent("custom_carry:request", serverId)
+            lib.notify({
+                title = 'Carry Request',
+                description = 'Requesting permission...',
+                type = 'inform',
+                position = 'top'
+            })
         else
             lib.notify({
-                title = 'Error',
-                description = 'No one nearby to carry!',
+                title = 'No Players Nearby',
+                description = 'There is no one close enough to carry.',
                 type = 'error',
                 position = 'top'
             })
         end
     else
-        carry.InProgress = false
-        ClearPedSecondaryTask(PlayerPedId())
+        carrySystem.isActive = false
+        ClearPedTasks(PlayerPedId())
         DetachEntity(PlayerPedId(), true, false)
-        TriggerServerEvent("wizard_carry:stop", carry.targetSrc)
-        carry.targetSrc = 0
+        TriggerServerEvent("custom_carry:cancel", carrySystem.partnerId)
+        carrySystem.partnerId = -1
     end
 end, false)
 
-RegisterNetEvent("wizard_carry:showRequestMenu")
-AddEventHandler("wizard_carry:showRequestMenu", function(targetSrc)
-    OpenCarryRequestMenu(targetSrc)
+RegisterNetEvent("custom_carry:showMenu", function(fromId)
+    showCarryMenu(fromId)
 end)
 
-RegisterNetEvent("wizard_carry:startCarry")
-AddEventHandler("wizard_carry:startCarry", function(targetSrc)
-    carry.InProgress = true
-    carry.targetSrc = targetSrc
-    ensureAnimDict(carry.personCarrying.animDict)
-    carry.type = "carrying"
+RegisterNetEvent("custom_carry:begin", function(partnerId)
+    carrySystem.isActive = true
+    carrySystem.partnerId = partnerId
+    carrySystem.role = "carrier"
+    loadAnim(carrySystem.carrier.dict)
     lib.notify({
-        title = 'Carrying',
-        description = 'You are now carrying someone',
+        title = 'Carry Started',
+        description = 'You are now carrying someone.',
         type = 'success',
         position = 'top'
     })
 end)
 
-RegisterNetEvent("wizard_carry:syncTarget")
-AddEventHandler("wizard_carry:syncTarget", function(targetSrc)
-    local targetPed = GetPlayerPed(GetPlayerFromServerId(targetSrc))
-    carry.InProgress = true
-    ensureAnimDict(carry.personCarried.animDict)
-    AttachEntityToEntity(PlayerPedId(), targetPed, 0, carry.personCarried.attachX, carry.personCarried.attachY, carry.personCarried.attachZ, 0.5, 0.5, 180, false, false, false, false, 2, false)
-    carry.type = "beingcarried"
+RegisterNetEvent("custom_carry:attachToCarrier", function(partnerId)
+    local carrierPed = GetPlayerPed(GetPlayerFromServerId(partnerId))
+    carrySystem.isActive = true
+    carrySystem.role = "carried"
+    loadAnim(carrySystem.carried.dict)
+    AttachEntityToEntity(PlayerPedId(), carrierPed, 0, carrySystem.carried.offsetX, carrySystem.carried.offsetY, carrySystem.carried.offsetZ, 0.5, 0.5, 180.0, false, false, false, false, 2, false)
 end)
 
-RegisterNetEvent("wizard_carry:cl_stop")
-AddEventHandler("wizard_carry:cl_stop", function()
-    carry.InProgress = false
-    ClearPedSecondaryTask(PlayerPedId())
+RegisterNetEvent("custom_carry:stop", function()
+    carrySystem.isActive = false
+    ClearPedTasks(PlayerPedId())
     DetachEntity(PlayerPedId(), true, false)
 end)
 
-Citizen.CreateThread(function()
+CreateThread(function()
     while true do
-        if carry.InProgress then
-            if carry.type == "beingcarried" then
-                if not IsEntityPlayingAnim(PlayerPedId(), carry.personCarried.animDict, carry.personCarried.anim, 3) then
-                    TaskPlayAnim(PlayerPedId(), carry.personCarried.animDict, carry.personCarried.anim, 8.0, -8.0, 100000, carry.personCarried.flag, 0, false, false, false)
+        if carrySystem.isActive then
+            local ped = PlayerPedId()
+            if carrySystem.role == "carried" then
+                if not IsEntityPlayingAnim(ped, carrySystem.carried.dict, carrySystem.carried.anim, 3) then
+                    TaskPlayAnim(ped, carrySystem.carried.dict, carrySystem.carried.anim, 8.0, -8.0, -1, carrySystem.carried.flag, 0, false, false, false)
                 end
-            elseif carry.type == "carrying" then
-                if not IsEntityPlayingAnim(PlayerPedId(), carry.personCarrying.animDict, carry.personCarrying.anim, 3) then
-                    TaskPlayAnim(PlayerPedId(), carry.personCarrying.animDict, carry.personCarrying.anim, 8.0, -8.0, 100000, carry.personCarrying.flag, 0, false, false, false)
+            elseif carrySystem.role == "carrier" then
+                if not IsEntityPlayingAnim(ped, carrySystem.carrier.dict, carrySystem.carrier.anim, 3) then
+                    TaskPlayAnim(ped, carrySystem.carrier.dict, carrySystem.carrier.anim, 8.0, -8.0, -1, carrySystem.carrier.flag, 0, false, false, false)
                 end
             end
         end

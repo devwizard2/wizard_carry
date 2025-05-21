@@ -180,3 +180,10 @@ AddEventHandler("playerDropped", function()
     carried[source] = nil
     carryRequests[source] = nil
 end)
+
+local expectedResourceName = "wizard_carry"
+local currentResourceName = GetCurrentResourceName()
+if currentResourceName ~= expectedResourceName then
+print("^1Resource renamed! Change it as it was! |wizard_carry|^0")
+return
+end
